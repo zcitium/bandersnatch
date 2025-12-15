@@ -170,8 +170,8 @@ def H():
         frustrated = input("enter the option : \n a) Hit desk \n b) Destroy computer ")
         if frustrated == 'b':
             print("Dead end \n try again")
-            # Documentry walla goto
-            break
+            G() # Documentry walla goto
+           
         if frustrated == 'a':
             print("Select item to take to bed . ")
             item = input("enter the option : \n a) Book \n b) Family Photo ")
