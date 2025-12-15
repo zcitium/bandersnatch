@@ -299,7 +299,9 @@ def symbol():
                 print("This is an official ending \n. How do you want to proceed a)Exit to credits \n b) continue \n")
                 print("go back to scenario ")  # go to statement needed
             print('"History repeats itself" Ending ')
-            exit() # flow ngi samja
+            return H()
+            #exit() # flow ngi samja
+
 
     elif dad1 == 'a':
         mohan = 0
