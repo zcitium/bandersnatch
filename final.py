@@ -2,6 +2,7 @@ print("bandersnatch")
 global cereal, music, offer, mom, vinyl, reaction, jump, colin, follow, lsd, frustrated
 global item, passwd, mom2, visit, pills, pacs, frust, photo, kd, react1, exit1, dad1, dad, pearl, react2
 global mohan, option, action, act, ques2, ques, more, number, bkd
+mohan = 0
 
 
 def A():
@@ -107,10 +108,10 @@ def G():
     global follow, colin, jump, visit, lsd, pills
     print("taken to therapist by dad")
     jump = ' '
+    colin = ' '
     while True:
         print("stefan sees colin passing by")
         follow = input("enter your option \n a) see dr haynes  \n b)follow colin \n")
-        colin = ' '
         if follow == 'b':
             colin = 'y'  # have to check if he ever went to colin
 
@@ -143,6 +144,7 @@ def G():
                 if pills == 'b':
                     print("bandersnatch releases and gets 2.5/5 stars")
                     print("dead end \n try again")
+                    continue
                 if pills == 'a':
                     break
             break
@@ -304,7 +306,7 @@ def symbol():
 
 
     elif dad1 == 'a':
-        mohan = 0
+        # mohan = 0  Removed reset
         mohan += 1
         print("Mohan Tucker calls and asks if the game can be done by today ")
         if mohan == 1:
