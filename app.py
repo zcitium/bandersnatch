@@ -349,18 +349,11 @@ class BandersnatchApp:
             if index == 0:
                 play_type()
             
-            # Stop typing sound a few characters before the end for natural fade
-            # Use >= to ensure it triggers even for short messages
-            if index >= max(1, len(full_text) - 3) and index < len(full_text):
-                stop_type()
-            
             current_text = full_text[:index]
             bubble_widget.update_text(current_text)
             self.chat_area.auto_scroll()
             self.root.after(50, self.animate_text, bubble_widget, full_text, index+1)
         else:
-            # Ensure sound is stopped if it wasn't already
-            stop_type()
             self.show_choices()
 
     def load_node(self, node_id):
