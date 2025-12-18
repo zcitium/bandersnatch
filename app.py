@@ -9,6 +9,14 @@ import io
 import math
 import os
 
+try:
+    import pygame
+    pygame.mixer.init()
+    PYGAME_AVAILABLE = True
+except:
+    PYGAME_AVAILABLE = False
+    print("pygame not available - background music disabled")
+
 # Game State
 state = {
     "cereal": None,
@@ -49,38 +57,77 @@ def load_custom_sound(filename, default_generator):
             print(f"Error loading {filename}: {e}")
     return default_generator()
 
-# Load 'click.wav' if present, else generate sound
-CLICK_SOUND = load_custom_sound("click.wav", lambda: generate_click_sound(duration_ms=4, volume=0.8))
-# Load 'typing.wav' if present, else use a very short generic click (or silent fallback if preferred, but user requested sound)
-# We regenerate a lighter/higher pitch sound for default typing if file missing
-TYPE_SOUND = load_custom_sound("typing.wav", lambda: generate_click_sound(duration_ms=3, volume=0.2))
+# Load sounds using pygame for better performance if available
+TYPE_SOUND_OBJ = None
+CLICK_SOUND_OBJ = None
 
-def play_sound_worker(sound_data):
-    """Worker function to play sound synchronously in a thread"""
-    try:
-        # SND_MEMORY = 0x0004
-        # We DO NOT use SND_ASYNC here, because we are already in a thread.
-        # This bypasses the 'Cannot play asynchronously from memory' error.
-        winsound.PlaySound(sound_data, winsound.SND_MEMORY)
-    except Exception:
-        pass
+def init_pygame_sounds():
+    global TYPE_SOUND_OBJ, CLICK_SOUND_OBJ
+    if not PYGAME_AVAILABLE:
+        return
+        
+    # Load Click
+    click_data = load_custom_sound("click.wav", lambda: generate_click_sound(duration_ms=4, volume=0.8))
+    CLICK_SOUND_OBJ = pygame.mixer.Sound(io.BytesIO(click_data))
+    
+    # Load Typing
+    type_data = load_custom_sound("typing.wav", lambda: generate_click_sound(duration_ms=3, volume=0.2))
+    TYPE_SOUND_OBJ = pygame.mixer.Sound(io.BytesIO(type_data))
 
-def play_sound_async(sound_data):
-    """Spawn a thread to play sound"""
-    threading.Thread(target=play_sound_worker, args=(sound_data,), daemon=True).start()
+# Initialize immediately
+init_pygame_sounds()
 
 def play_click():
-    play_sound_async(CLICK_SOUND)
+    if CLICK_SOUND_OBJ:
+        CLICK_SOUND_OBJ.play()
+    else:
+        # Fallback to winsound if pygame failed
+        click_data = load_custom_sound("click.wav", lambda: generate_click_sound(duration_ms=4, volume=0.8))
+        threading.Thread(target=lambda: winsound.PlaySound(click_data, winsound.SND_MEMORY), daemon=True).start()
 
 def play_type():
-    play_sound_async(TYPE_SOUND)
+    if TYPE_SOUND_OBJ:
+        # Loop for continuous typing sound if needed, but per request we play once 
+        # and stop. If it's a short click, we just play.
+        # However, user said the sound IS multiple characters, so we play it.
+        TYPE_SOUND_OBJ.play()
 
 def stop_type():
     """Stop the typing sound"""
-    try:
-        winsound.PlaySound(None, winsound.SND_PURGE)
-    except:
-        pass
+    if TYPE_SOUND_OBJ:
+        TYPE_SOUND_OBJ.stop()
+    else:
+        try:
+            winsound.PlaySound(None, winsound.SND_PURGE)
+        except:
+            pass
+
+def start_background_music():
+    """Start playing background music in a loop"""
+    if not PYGAME_AVAILABLE:
+        return
+    
+    # Try different file formats
+    for music_file in ["background.wav", "background.mp3", "background.ogg"]:
+        if os.path.exists(music_file):
+            try:
+                pygame.mixer.music.load(music_file)
+                pygame.mixer.music.set_volume(0.3)  # 30% volume
+                pygame.mixer.music.play(-1)  # -1 means loop forever
+                print(f"Playing background music: {music_file}")
+                return
+            except Exception as e:
+                print(f"Error loading {music_file}: {e}")
+    
+    print("No background music file found (background.wav/mp3/ogg)")
+
+def stop_background_music():
+    """Stop background music"""
+    if PYGAME_AVAILABLE:
+        try:
+            pygame.mixer.music.stop()
+        except:
+            pass
 
 class RoundedBubble(tk.Canvas):
     def __init__(self, parent, text, max_width=400, bg_color="#ffffff", fg_color="#000000", is_user=False):
@@ -295,6 +342,58 @@ class BandersnatchApp:
 
         self.button_frame = tk.Frame(self.game_frame, bg="#121212", pady=15)
         self.button_frame.pack(fill="x")
+        
+        # Volume control in bottom right
+        self.volume_frame = tk.Frame(self.game_frame, bg="#121212")
+        self.volume_frame.place(relx=1.0, rely=1.0, anchor="se", x=-20, y=-20)
+        
+        # Volume icon (clickable)
+        self.volume_icon = tk.Label(
+            self.volume_frame,
+            text="🔊",
+            bg="#121212",
+            fg="#ffffff",
+            font=("Segoe UI", 12),
+            cursor="hand2"
+        )
+        self.volume_icon.pack(side="left", padx=5)
+        self.volume_icon.bind("<Button-1>", lambda e: self.toggle_volume_slider())
+        
+        # Volume slider (initially hidden)
+        self.volume_slider = tk.Scale(
+            self.volume_frame,
+            from_=0,
+            to=100,
+            orient="horizontal",
+            bg="#333333",
+            fg="#ffffff",
+            highlightthickness=0,
+            troughcolor="#121212",
+            activebackground="#555555",
+            length=150,
+            width=15,
+            command=self.on_volume_change
+        )
+        self.volume_slider.set(30)  # Default 30%
+        self.slider_visible = False  # Start hidden
+
+    def toggle_volume_slider(self):
+        """Show/hide volume slider"""
+        if self.slider_visible:
+            self.volume_slider.pack_forget()
+            self.slider_visible = False
+        else:
+            self.volume_slider.pack(side="left")
+            self.slider_visible = True
+
+    def on_volume_change(self, value):
+        """Update background music volume"""
+        if PYGAME_AVAILABLE:
+            try:
+                volume = float(value) / 100.0
+                pygame.mixer.music.set_volume(volume)
+            except:
+                pass
 
     def start_game(self):
         # Destroy title screen
@@ -303,12 +402,15 @@ class BandersnatchApp:
             self.title_frame = None
         
         # Add a brief delay before showing game (fade-like effect)
-        self.root.after(700, self._show_game_screen)
+        self.root.after(1500, self._show_game_screen)
     
     def _show_game_screen(self):
         # Setup and show game
         self.setup_game_ui()
         self.game_frame.pack(fill="both", expand=True)
+        
+        # Start background music
+        start_background_music()
         
         # Start Story
         self.load_node("start")
@@ -354,6 +456,8 @@ class BandersnatchApp:
             self.chat_area.auto_scroll()
             self.root.after(50, self.animate_text, bubble_widget, full_text, index+1)
         else:
+            # Stop typing sound when animation completes (now safe with pygame)
+            stop_type()
             self.show_choices()
 
     def load_node(self, node_id):
@@ -428,7 +532,7 @@ class BandersnatchApp:
 # Story Data (Placeholder for now)
 STORY_NODES = {
     "start": {
-        "text": "BANDERSNATCH\n\nJuly 9th, 1984.\n\nYou wake up. The morning light filters through the curtains. It's a big day for you at Tuckersoft.",
+        "text": "July 9th, 1984.\n\nYou wake up. The morning light filters through the curtains. It's a big day for you at Tuckersoft.",
         "choices": {
             "Wake Up": "cereal",
         }
