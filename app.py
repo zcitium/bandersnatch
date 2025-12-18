@@ -8,6 +8,7 @@ import struct
 import io
 import math
 import os
+import json
 
 try:
     import pygame
@@ -364,6 +365,7 @@ class BandersnatchApp:
         self.current_node = None
         self.current_music_type = "normal" 
         self.input_locked = False # Prevent double clicks
+        self.chat_history = [] # To save entire interaction
         
         # Main Container to hold screens
         self.container = tk.Frame(root, bg="#121212")
@@ -400,21 +402,91 @@ class BandersnatchApp:
             fg="#888888"
         ).pack(pady=5)
         
-        # Start Button
+        # Buttons Frame
         btn_frame = tk.Frame(self.title_frame, bg="#121212")
         btn_frame.pack(pady=50)
         
-        start_btn = RoundedButton(
-            btn_frame, 
-            text="START INTERACTION", 
-            command=self.start_game,
-            width=300,
-            height=60,
-            radius=30,
-            bg="#333333",
-            fg="white"
-        )
-        start_btn.pack()
+        save_path = "savegame.json"
+        if os.path.exists(save_path):
+            # Continue Button
+            RoundedButton(
+                btn_frame, 
+                text="CONTINUE INTERACTION", 
+                command=self.continue_game,
+                width=300,
+                height=60,
+                radius=30,
+                bg="#444444",
+                fg="white"
+            ).pack(pady=10)
+            
+            # New Game Button
+            RoundedButton(
+                btn_frame, 
+                text="NEW GAME", 
+                command=self.start_game,
+                width=300,
+                height=60,
+                radius=30,
+                bg="#333333",
+                fg="#bbbbbb"
+            ).pack(pady=10)
+        else:
+            # Start Button
+            RoundedButton(
+                btn_frame, 
+                text="START INTERACTION", 
+                command=self.start_game,
+                width=300,
+                height=60,
+                radius=30,
+                bg="#333333",
+                fg="white"
+            ).pack()
+
+    def save_game(self):
+        """Save current progress to JSON"""
+        if not self.current_node: return
+        data = {
+            "current_node": self.current_node,
+            "state": state,
+            "chat_history": self.chat_history
+        }
+        try:
+            with open("savegame.json", "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"Error saving game: {e}")
+
+    def continue_game(self):
+        """Load progress and start"""
+        try:
+            if os.path.exists("savegame.json"):
+                with open("savegame.json", "r") as f:
+                    data = json.load(f)
+                    
+                # Restore state
+                global state
+                # Ensure all keys from save are restored
+                for k, v in data.get("state", {}).items():
+                    state[k] = v
+                
+                # Restore history
+                self.chat_history = data.get("chat_history", [])
+                
+                # Close title and start
+                if self.title_frame:
+                    self.title_frame.destroy()
+                    self.title_frame = None
+                
+                # Add a brief delay before showing game
+                self.root.after(1000, lambda: self._show_game_screen(
+                    node_id=data.get("current_node", "start"),
+                    history=self.chat_history
+                ))
+        except Exception as e:
+            print(f"Error loading game: {e}")
+            self.start_game()
 
     def setup_game_ui(self):
         self.game_frame = tk.Frame(self.container, bg="#121212")
@@ -481,6 +553,25 @@ class BandersnatchApp:
                 pass
 
     def start_game(self):
+        # Clear existing save if starting fresh
+        if os.path.exists("savegame.json"):
+            try:
+                os.remove("savegame.json")
+            except:
+                pass
+        
+        # Reset state to default
+        global state
+        state["cereal"] = None
+        state["music"] = None
+        state["offer"] = None
+        state["colin_follow"] = False
+        state["mohan_counter"] = 0
+        state["inventory"] = []
+        # Keep volume setting
+        
+        self.chat_history = [] 
+
         # Destroy title screen
         if self.title_frame:
             self.title_frame.destroy()
@@ -489,23 +580,31 @@ class BandersnatchApp:
         # Add a brief delay before showing game (fade-like effect)
         self.root.after(1500, self._show_game_screen)
     
-    def _show_game_screen(self):
+    def _show_game_screen(self, node_id="start", history=None):
         # Setup and show game
         self.setup_game_ui()
         self.game_frame.pack(fill="both", expand=True)
+        
+        # Restore chat history if any
+        if history:
+            for msg in history:
+                self.create_bubble(msg["text"], is_user=msg["is_user"], add_to_history=False)
         
         # Start baseline music
         self.current_music_type = "normal"
         start_background_music("normal")
         
         # Start Story
-        self.load_node("start")
+        self.load_node(node_id)
 
     def clear_buttons(self):
         for widget in self.button_frame.winfo_children():
             widget.destroy()
 
-    def create_bubble(self, text, is_user=False):
+    def create_bubble(self, text, is_user=False, add_to_history=True):
+        if add_to_history and text.strip():
+            self.chat_history.append({"text": text, "is_user": is_user})
+            
         row = tk.Frame(self.chat_area.scrollable_frame, bg="#0d1117", pady=2, padx=10) # Reduced row spacing
         row.pack(fill="x")
         
@@ -544,10 +643,16 @@ class BandersnatchApp:
         else:
             # Stop typing sound when animation completes (now safe with pygame)
             stop_type()
+            # Add final text to history after typing
+            self.chat_history.append({"text": full_text, "is_user": False})
+            self.save_game()
             self.show_choices()
 
     def load_node(self, node_id):
         self.current_node = node_id
+        # Auto-save
+        self.save_game()
+        
         if node_id not in STORY_NODES:
             self.create_bubble("End of Line.")
             self.clear_buttons()
@@ -629,9 +734,13 @@ class BandersnatchApp:
             self.root.after(800, lambda: self.load_node(next_node_id))
 
     def restart_game(self):
-        # Clear chat
+        # Clear chat UI and history
+        self.chat_history = []
         for widget in self.chat_area.scrollable_frame.winfo_children():
             widget.destroy()
+        
+        # We don't necessarily reset 'state' here as some choices might persist in Bandersnatch logic
+        # but for a clean 'Restart', we should at least clear the visible history.
         self.load_node("start")
 
 
