@@ -594,8 +594,8 @@ class BandersnatchApp:
         self.current_music_type = "normal"
         start_background_music("normal")
         
-        # Start Story
-        self.load_node(node_id)
+        # Start Story - Use resume flag if starting from history
+        self.load_node(node_id, resume=(history is not None))
 
     def clear_buttons(self):
         for widget in self.button_frame.winfo_children():
@@ -643,15 +643,13 @@ class BandersnatchApp:
         else:
             # Stop typing sound when animation completes (now safe with pygame)
             stop_type()
-            # Add final text to history after typing
+            # Add final text to history after typing and save
             self.chat_history.append({"text": full_text, "is_user": False})
             self.save_game()
             self.show_choices()
 
-    def load_node(self, node_id):
+    def load_node(self, node_id, resume=False):
         self.current_node = node_id
-        # Auto-save
-        self.save_game()
         
         if node_id not in STORY_NODES:
             self.create_bubble("End of Line.")
@@ -671,7 +669,12 @@ class BandersnatchApp:
         if music_type != self.current_music_type:
             start_background_music(music_type)
             self.current_music_type = music_type
-        
+
+        # If resuming, we already have the text in history, just show choices
+        if resume:
+            self.show_choices()
+            return
+            
         # Resolve text
         text = node["text"]
         if callable(text):
