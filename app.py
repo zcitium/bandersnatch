@@ -702,6 +702,7 @@ STORY_NODES = {
     },
     "therapist_mom": {
         "text": "Dr. Haynes office. She asks about your past. \n\n'Do you want to talk about your mother?'",
+        "music": "intense",
         "choices": {
             "Yes": "mom_yes",
             "No": "mom_no"
@@ -722,6 +723,7 @@ STORY_NODES = {
     },
     "mom_yes": {
         "text": "You talk about the rabbit. The train. The delay. Her death.\n\nIt still hurts.",
+        "music": "intense",
         "choices": {
             "Go to Record Store": "record_store"
         }
@@ -774,6 +776,7 @@ STORY_NODES = {
     },
     "visit_haynes": {
         "text": "You see Dr. Haynes. She increases your dosage.\n\n'Take them, Stefan. They help.'",
+        "music": "intense",
         "choices": {
             "Take Pills": "pills_take",
             "Flush Pills": "pills_flush"
@@ -837,6 +840,7 @@ STORY_NODES = {
     },
     "frustrated_choice": {
         "text": "The code is broken. The bugs are crawling under the screen.\n\nHow do you react?",
+        "music": "intense",
         "choices": {
             "Hit Desk": "item_bed",
             "Destroy Computer": "destroy_pc"
