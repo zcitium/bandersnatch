@@ -17,6 +17,8 @@ except:
     PYGAME_AVAILABLE = False
     print("pygame not available - background music disabled")
 
+CURRENT_MUSIC_TYPE = None # Track what's currently playing
+
 # Game State
 state = {
     "cereal": None,
@@ -24,8 +26,28 @@ state = {
     "offer": None,
     "colin_follow": False,
     "mohan_counter": 0,
-    "inventory": []
+    "inventory": [],
+    "volume": 0.3
 }
+
+# Font Configuration
+# We prefer 'Special Elite' (Google Font), fallback to 'Courier New' for typewriter feel
+GAME_FONT = "Special Elite"
+GAME_FONT_BOLD = ("Special Elite", 11, "bold")
+GAME_FONT_NORMAL = ("Special Elite", 11)
+GAME_FONT_TITLE = ("Special Elite", 48, "bold")
+GAME_FONT_SUBTITLE = ("Special Elite", 16)
+
+def get_font(size, bold=False):
+    # Try Special Elite, then Courier New
+    # Check if Special Elite exists in the system font list
+    weight = "bold" if bold else "normal"
+    families = font.families()
+    if "Special Elite" in families:
+        return ("Special Elite", size, weight)
+    else:
+        # Fallback to Courier New which has a similar typewriter feel
+        return ("Courier New", size, weight)
 
 def generate_click_sound(duration_ms=10, volume=0.5):
     """Generates a short burst of white noise (mechanical click) in WAV format"""
@@ -102,24 +124,39 @@ def stop_type():
         except:
             pass
 
-def start_background_music():
-    """Start playing background music in a loop"""
+def start_background_music(music_type="normal"):
+    """Start playing background music in a loop, handling transitions between types"""
+    global CURRENT_MUSIC_TYPE
     if not PYGAME_AVAILABLE:
         return
     
+    # Don't restart if already playing this type
+    if music_type == CURRENT_MUSIC_TYPE:
+        return
+        
+    # Track selection
+    if music_type == "intense":
+        files = [ "intense.wav"]
+    else:
+        files = ["background.wav"]
+
     # Try different file formats
-    for music_file in ["background.wav", "background.mp3", "background.ogg"]:
+    for music_file in files:
         if os.path.exists(music_file):
             try:
+                # Use current volume from state
+                vol = state.get("volume", 0.3)
+
                 pygame.mixer.music.load(music_file)
-                pygame.mixer.music.set_volume(0.3)  # 30% volume
+                pygame.mixer.music.set_volume(vol) 
                 pygame.mixer.music.play(-1)  # -1 means loop forever
-                print(f"Playing background music: {music_file}")
+                CURRENT_MUSIC_TYPE = music_type
+                print(f"Switched background music to: {music_file} ({music_type})")
                 return
             except Exception as e:
                 print(f"Error loading {music_file}: {e}")
     
-    print("No background music file found (background.wav/mp3/ogg)")
+    print(f"No {music_type} background music file found.")
 
 def stop_background_music():
     """Stop background music"""
@@ -144,7 +181,7 @@ class RoundedBubble(tk.Canvas):
             self.padding, 
             text=text, 
             fill=self.fg_color, 
-            font=("Segoe UI", 11), # Better standard UI font, slightly smaller
+            font=get_font(11), 
             anchor="nw", 
             width=max_width - (self.padding * 2)
         )
@@ -185,8 +222,12 @@ class RoundedBubble(tk.Canvas):
 
 
 class RoundedButton(tk.Canvas):
-    def __init__(self, parent, text, command, width=250, height=45, radius=22, bg="#333333", fg="#FFFFFF", hover_bg="#555555"):
-        super().__init__(parent, width=width, height=height, bg=parent["bg"], highlightthickness=0)
+    def __init__(self, parent, text, command, width=250, height=45, radius=22, bg="#333333", fg="#FFFFFF", hover_bg="#555555", glow_color=None):
+        # Slightly larger canvas if glowing to accommodate the light
+        self.glow_color = glow_color
+        self.glow_padding = 4 if glow_color else 0
+        super().__init__(parent, width=width + (self.glow_padding*2), height=height + (self.glow_padding*2), bg=parent["bg"], highlightthickness=0)
+        
         self.command = command
         self.text = text
         self.radius = radius
@@ -194,10 +235,40 @@ class RoundedButton(tk.Canvas):
         self.fg_color = fg
         self.hover_bg = hover_bg
         self.default_bg = bg
+        
+        self.width = width
+        self.height = height
+        self.is_blinking = False
+        self.blink_state = True
 
-        # Create shapes
-        self.rect = self.create_rounded_rect(0, 0, width, height, radius, self.default_bg)
-        self.text_id = self.create_text(width/2, height/2, text=text, fill=self.fg_color, font=("Segoe UI", 11, "bold"))
+        # Create glow shape if specified
+        self.glow_rect = None
+        if self.glow_color:
+            self.glow_rect = self.create_rounded_rect(
+                0, 0, 
+                width + (self.glow_padding*2), 
+                height + (self.glow_padding*2), 
+                radius + 2, 
+                self.glow_color
+            )
+        
+        # Create main button shape
+        self.rect = self.create_rounded_rect(
+            self.glow_padding, 
+            self.glow_padding, 
+            width + self.glow_padding, 
+            height + self.glow_padding, 
+            radius, 
+            self.default_bg
+        )
+        
+        self.text_id = self.create_text(
+            (width/2) + self.glow_padding, 
+            (height/2) + self.glow_padding, 
+            text=text, 
+            fill=self.fg_color, 
+            font=get_font(11, bold=True)
+        )
 
         # Bind events
         self.bind("<Button-1>", self._on_click)
@@ -207,6 +278,18 @@ class RoundedButton(tk.Canvas):
     def create_rounded_rect(self, x1, y1, x2, y2, r, color):
         points = [x1+r, y1, x1+r, y1, x2-r, y1, x2-r, y1, x2, y1, x2, y1+r, x2, y1+r, x2, y2-r, x2, y2-r, x2, y2, x2-r, y2, x2-r, y2, x1+r, y2, x1+r, y2, x1, y2, x1, y2-r, x1, y2-r, x1, y1+r, x1, y1+r, x1, y1]
         return self.create_polygon(points, smooth=True, fill=color)
+
+    def start_blinking(self, interval=500):
+        if not self.glow_rect: return
+        self.is_blinking = True
+        self._toggle_blink(interval)
+
+    def _toggle_blink(self, interval):
+        if not self.is_blinking: return
+        self.blink_state = not self.blink_state
+        color = self.glow_color if self.blink_state else self.master["bg"]
+        self.itemconfig(self.glow_rect, fill=color)
+        self.after(interval, self._toggle_blink, interval)
 
     def _on_click(self, event):
         play_click()
@@ -279,6 +362,7 @@ class BandersnatchApp:
 
         self.typing_speed = 25  # ms
         self.current_node = None
+        self.current_music_type = "normal" 
         self.input_locked = False # Prevent double clicks
         
         # Main Container to hold screens
@@ -302,7 +386,7 @@ class BandersnatchApp:
         tk.Label(
             self.title_frame, 
             text="BANDERSNATCH", 
-            font=("Segoe UI", 48, "bold"), 
+            font=get_font(48, bold=True), 
             bg="#121212", 
             fg="#ffffff"
         ).pack(pady=10)
@@ -311,7 +395,7 @@ class BandersnatchApp:
         tk.Label(
             self.title_frame, 
             text="July 9th, 1984", 
-            font=("Segoe UI", 16), 
+            font=get_font(16), 
             bg="#121212", 
             fg="#888888"
         ).pack(pady=5)
@@ -391,6 +475,7 @@ class BandersnatchApp:
         if PYGAME_AVAILABLE:
             try:
                 volume = float(value) / 100.0
+                state["volume"] = volume
                 pygame.mixer.music.set_volume(volume)
             except:
                 pass
@@ -409,8 +494,9 @@ class BandersnatchApp:
         self.setup_game_ui()
         self.game_frame.pack(fill="both", expand=True)
         
-        # Start background music
-        start_background_music()
+        # Start baseline music
+        self.current_music_type = "normal"
+        start_background_music("normal")
         
         # Start Story
         self.load_node("start")
@@ -475,6 +561,12 @@ class BandersnatchApp:
 
         node = STORY_NODES[node_id]
         
+        # Dynamic Music Switch
+        music_type = node.get("music", "normal")
+        if music_type != self.current_music_type:
+            start_background_music(music_type)
+            self.current_music_type = music_type
+        
         # Resolve text
         text = node["text"]
         if callable(text):
@@ -490,16 +582,30 @@ class BandersnatchApp:
     def show_choices(self):
         self.input_locked = False # Unlock input
         node = STORY_NODES[self.current_node]
-        for label, next_node_id in node["choices"].items():
+        is_intense = node.get("music") == "intense"
+        
+        choice_items = list(node["choices"].items())
+        for i, (label, next_node_id) in enumerate(choice_items):
+            # Blue Pill / Red Pill Effect for Intense Scenes
+            glow = None
+            if is_intense:
+                if i == 0: glow = "#ff4444" # Red
+                elif i == 1: glow = "#4444ff" # Blue
+                else: glow = "#ffffff" # White for any others
+            
             btn = RoundedButton(
                 self.button_frame,
                 text=label,
                 command=lambda l=label, n=next_node_id: self.transition(l, n),
                 bg="#333333", 
                 fg="#ffffff",
-                hover_bg="#555555"
+                hover_bg="#555555",
+                glow_color=glow
             )
             btn.pack(pady=5)
+            
+            if is_intense and glow:
+                btn.start_blinking(400) # Fast blinking for intensity
 
     def transition(self, label, next_node_id):
         if self.input_locked:
@@ -648,6 +754,7 @@ STORY_NODES = {
     },
     "lunch_tea": {
         "text": "You snap. The tea flies. The computer fizzes and dies.\n\nYears of work lost.\n\nDEAD END.",
+        "music": "intense",
         "choices": {
             "Try Again": "dad_lunch"
         }
@@ -686,6 +793,7 @@ STORY_NODES = {
     },
     "follow_colin": {
         "text": "You follow Colin to his flat. Reality feels... thin here.\n\n'Offer you something to expand the mind?' he asks.",
+        "music": "intense",
         "choices": {
             "Take LSD": "lsd_yes",
             "Refuse": "lsd_no"
@@ -693,18 +801,21 @@ STORY_NODES = {
     },
     "lsd_no": {
         "text": "You refuse. Colin spikes your tea anyway. The walls begin to breathe.",
+        "music": "intense",
         "choices": {
             "Listen to Colin": "colin_balcony"
         }
     },
     "lsd_yes": {
         "text": "You accept. The world melts. Colin talks about timelines. PAC-MAN. Control.",
+        "music": "intense",
         "choices": {
             "Listen to Colin": "colin_balcony"
         }
     },
     "colin_balcony": {
         "text": "Balcony edge. 'One of us has to jump,' Colin says. 'To show it doesn't matter.'\n\nWho jumps?",
+        "music": "intense",
         "choices": {
             "Stefan": "jump_stefan",
             "Colin": "jump_colin"
@@ -712,12 +823,14 @@ STORY_NODES = {
     },
     "jump_stefan": {
         "text": "You step off. Gravity takes over. \n\nThe game is finished without you. \n\nDEAD END.",
+        "music": "intense",
         "choices": {
             "Try Again": "colin_balcony"
         }
     },
     "jump_colin": {
         "text": "Colin steps off. He creates a mess.\n\nYou wake up. Was it a dream?\n\nBack to work.",
+        "music": "intense",
         "choices": {
             "Work (Frustrated)": "frustrated_choice"
         }
@@ -770,12 +883,14 @@ STORY_NODES = {
     },
     "pass_pax": {
         "text": "The monster PAX appears! It's a hallucination. You wake up.",
+        "music": "intense",
         "choices": {
             "Work": "symbol_choice"
         }
     },
     "pass_jfd": {
         "text": "Jerome F. Davies appears. He laughs. Madness.",
+        "music": "intense",
         "choices": {
             "Work": "symbol_choice"
         }
@@ -788,6 +903,7 @@ STORY_NODES = {
     },
     "symbol_choice": {
         "text": "The symbol is everywhere. You are not in control.\n\nKill Dad?",
+        "music": "intense",
         "choices": {
             "Back Off": "frustrated_choice",
             "Kill Dad": "kill_dad"
@@ -795,6 +911,7 @@ STORY_NODES = {
     },
     "kill_dad": {
         "text": "You did it. He's dead.\n\nWhat now?",
+        "music": "intense",
         "choices": {
             "Bury Him": "bury_dad",
             "Chop Him Up": "chop_dad"
@@ -802,24 +919,28 @@ STORY_NODES = {
     },
     "bury_dad": {
         "text": "You bury him. The dog finds him later. Jail.",
+        "music": "intense",
         "choices": {
             "Restart": "start"
         }
     },
     "chop_dad": {
         "text": "You chop him up. Grim. But effective.\n\nThe game is released. 5/5 Stars. ",
+        "music": "intense",
         "choices": {
             "Future Ending": "pearl_ending"
         }
     },
     "pearl_ending": {
         "text": "Years later, Pearl Ritchie remakes the game. She finds the bugs...",
+        "music": "intense",
         "choices": {
             "Destroy Computer": "pearl_destroy"
         }
     },
     "pearl_destroy": {
         "text": "She destroys the computer. History repeats itself.\n\nEnd of Line.",
+        "music": "intense",
         "choices": {
             "Restart": "start"
         }
